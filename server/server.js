@@ -1,10 +1,17 @@
 const WebSocket = require('ws');
-const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const express = require('express');
 const crypto = require('crypto');
+const path = require('path');
 
 const app = express();
-const server = http.createServer(app);
+const server = https.createServer(
+    {
+        key: fs.readFileSync(path.join(__dirname, '../certs/cert.key')),
+        cert: fs.readFileSync(path.join(__dirname, '../certs/cert.crt'))
+    },
+    app);
 const wss = new WebSocket.Server({ 
     server,
     clientTracking: true
@@ -79,20 +86,18 @@ wss.on('connection', (ws, req) => {
         timestamp: Date.now()
     });
 
-    // Set a timeout to close connection if role is not selected
     const roleSelectionTimeout = setTimeout(() => {
         if (pendingConnections.has(ws)) {
             console.log(`Client #${connectionId} did not select a role. Closing connection.`);
             ws.close();
         }
-    }, 10000); // 10 seconds to select role
+    }, 10000);
 
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
 
             if (data.role) {
-                // Clear the role selection timeout
                 clearTimeout(roleSelectionTimeout);
                 pendingConnections.delete(ws);
 
@@ -210,7 +215,6 @@ wss.on('connection', (ws, req) => {
     });
 });
 
-// Clean up old pending connections periodically
 setInterval(() => {
     const now = Date.now();
     pendingConnections.forEach((data, ws) => {

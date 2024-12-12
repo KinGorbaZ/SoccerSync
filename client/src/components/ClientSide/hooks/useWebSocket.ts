@@ -51,7 +51,7 @@ export const useWebSocket = ({
         cleanup();
         setConnectionStatus(ConnectionStatus.CONNECTING);
 
-        const ws = new WebSocket('ws://192.168.50.188:3000');
+        const ws = new WebSocket('wss://192.168.50.188:3000');
         wsRef.current = ws;
 
         return new Promise<void>((resolve, reject) => {
