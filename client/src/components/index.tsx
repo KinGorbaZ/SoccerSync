@@ -1,6 +1,6 @@
 // src/components/index.tsx
-import React, { useState } from 'react';
-import { DeviceRole, GameState, GameSettings, ConnectionStatus } from '../types';
+import React, { useCallback, useState } from 'react';
+import { DeviceRole, GameState, GameSettings } from '../types';
 // Fix these import paths
 import { useWebSocket } from './ClientSide/hooks/useWebSocket';
 import { useGameControl } from './ClientSide/hooks/useGameControl';
@@ -37,8 +37,23 @@ const ClientSide = () => {
         setDeviceRole,
         setDeviceId,
         setScreenColor,
-        setGameState  // Make sure this is passed
+        setGameState,
+        setGameSettings  // Add this
     });
+
+    const handleHit = useCallback((deviceId: string) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+                type: 'hit',
+                content: {
+                    action: 'hit',
+                    deviceId,
+                    timestamp: Date.now()
+                },
+                sender: username
+            }));
+        }
+    }, [wsRef, username]);
 
     const {
         handleStartGame,
@@ -69,6 +84,8 @@ const ClientSide = () => {
                 <ClientScreen 
                     deviceId={deviceId}
                     screenColor={screenColor}
+                    onHit={handleHit}
+                    gamePattern={gameSettings.pattern}  // Pass the pattern here
                 />
             )}
             

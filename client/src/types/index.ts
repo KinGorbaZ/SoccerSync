@@ -15,11 +15,12 @@ export interface Device {
     username: string;
     name?: string;
     status: 'connected' | 'disconnected';
+    currentColor?: string;  // Add this line
 }
 
 export interface GameSettings {
    intervalSpeed: number;
-   pattern: 'random' | 'sequential' | 'simultaneous';
+   pattern: 'random' | 'sequential' | 'simultaneous'| 'hit';
    colors: string[];  // Array of custom colors
 }
 
@@ -56,7 +57,7 @@ export interface ActivateDeviceCommand extends BaseCommand {
     activateAt: number;
 }
 
-export type Command = ColorCommand | GameStateCommand | RenameCommand | ActivateDeviceCommand;
+export type Command = ColorCommand | GameStateCommand | RenameCommand | ActivateDeviceCommand | HitCommand;
 
 export interface ScheduledEvent {
     id: string;
@@ -84,14 +85,32 @@ export interface SyncMessage extends Message {
 }
 
 export interface Message {
-   type: 'message' | 'system' | 'command' | 'error' | 'deviceList' | 'deviceUpdate' | 'sync';
-   content: string | Device[] | Command | { id: string } | TimeSync;
-   sender: string;
-   timestamp?: number;
+    type: 'message' | 'system' | 'command' | 'error' | 'deviceList' | 'deviceUpdate' | 'sync' | 'hit';
+    content: string | Device[] | Command | { id: string } | TimeSync;
+    sender: string;
+    timestamp?: number;
 }
 
 export interface TimeHelperResult {
    offset: number;
    localTime: number;
    roundTripTime: number;
+}
+
+export interface HitCommand extends BaseCommand {
+    action: 'hit';
+    deviceId: string;
+    hitSpeed?: number;
+    timestamp: number;
+}
+
+
+export interface HitMessage extends Message {
+    type: 'hit';
+    content: {
+        action: 'hit';
+        deviceId: string;
+        hitSpeed?: number;
+        timestamp: number;
+    };
 }

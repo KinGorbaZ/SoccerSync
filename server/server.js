@@ -21,6 +21,9 @@ const devices = new Map();
 let masterDevice = null;
 let connectionCount = 0;
 const pendingConnections = new Map();
+let gameState = 'idle';
+let gameSettings = null;
+let activeDevice = null;
 
 const generateDeviceId = () => crypto.randomBytes(4).toString('hex');
 
@@ -58,20 +61,112 @@ const broadcastMessage = (message) => {
     });
 };
 
-const closeAllConnections = () => {
-    console.log('Closing all existing connections...');
-    wss.clients.forEach((client) => {
-        try {
-            client.terminate();
-        } catch (error) {
-            console.error('Error while closing client connection:', error);
+const selectNextDevice = () => {
+    const clientDevices = Array.from(devices.values()).filter(d => d.role === 'client');
+    
+    if (clientDevices.length === 0) return null;
+
+    // If there's only one device, use it regardless of whether it was active
+    if (clientDevices.length === 1) {
+        const nextDevice = clientDevices[0];
+        const nextColor = gameSettings.colors[Math.floor(Math.random() * gameSettings.colors.length)];
+        activeDevice = nextDevice;
+        return { device: nextDevice, color: nextColor };
+    }
+
+    // If multiple devices, try to pick a different one than the active one
+    const availableDevices = clientDevices.filter(d => (!activeDevice || d.id !== activeDevice.id));
+    if (availableDevices.length > 0) {
+        const nextDevice = availableDevices[Math.floor(Math.random() * availableDevices.length)];
+        const nextColor = gameSettings.colors[Math.floor(Math.random() * gameSettings.colors.length)];
+        activeDevice = nextDevice;
+        return { device: nextDevice, color: nextColor };
+    }
+
+    return null;
+};
+
+const activateDevice = (deviceId, color) => {
+    devices.forEach((device, client) => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+                type: 'command',
+                content: {
+                    action: 'color',
+                    color: device.id === deviceId ? color : 'black'
+                },
+                sender: 'System'
+            }));
         }
     });
-    devices.clear();
-    pendingConnections.clear();
-    masterDevice = null;
-    connectionCount = 0;
-    console.log('All connections closed.');
+};
+
+let hitPatternTimeout = null;
+
+const activateNextDeviceAfterDelay = (intervalSpeed) => {
+    console.log('Scheduling next device activation...');
+    
+    // Clear any existing timeout
+    if (hitPatternTimeout) {
+        clearTimeout(hitPatternTimeout);
+        hitPatternTimeout = null;
+    }
+
+    // Set timeout to activate next device after the interval
+    hitPatternTimeout = setTimeout(() => {
+        console.log('Timeout triggered, checking game state...');
+        if (gameState === 'running' && gameSettings?.pattern === 'hit') {
+            console.log('Game is running, selecting next device...');
+            const next = selectNextDevice();
+            if (next) {
+                console.log(`Activating device ${next.device.id} with color ${next.color}`);
+                activateDevice(next.device.id, next.color);
+            } else {
+                console.log('No next device available');
+            }
+        } else {
+            console.log(`Game state: ${gameState}, pattern: ${gameSettings?.pattern}`);
+        }
+    }, intervalSpeed);
+
+    console.log(`Next device will be activated in ${intervalSpeed}ms`);
+};
+
+const handleHit = (ws, data) => {
+    const hitDevice = devices.get(ws);
+    if (!hitDevice) {
+        console.log('Unregistered device attempted to send hit');
+        return;
+    }
+
+    console.log(`Hit detected from device ${hitDevice.id}`);
+
+    if (gameState === 'running' && gameSettings?.pattern === 'hit') {
+        // Turn current device black
+        ws.send(JSON.stringify({
+            type: 'command',
+            content: {
+                action: 'color',
+                color: 'black'
+            },
+            sender: 'System'
+        }));
+
+        // Use the consistent activation delay function
+        activateNextDeviceAfterDelay(gameSettings.intervalSpeed);
+
+        // Notify master
+        if (masterDevice && masterDevice.readyState === WebSocket.OPEN) {
+            masterDevice.send(JSON.stringify({
+                type: 'hit',
+                content: {
+                    deviceId: hitDevice.id,
+                    timestamp: data.content.timestamp
+                },
+                sender: hitDevice.id
+            }));
+        }
+    }
 };
 
 wss.on('connection', (ws, req) => {
@@ -79,7 +174,6 @@ wss.on('connection', (ws, req) => {
     const connectionId = ++connectionCount;
     console.log(`New client attempting to connect #${connectionId} from ${clientIp}`);
 
-    // Add to pending connections
     pendingConnections.set(ws, {
         id: connectionId,
         ip: clientIp,
@@ -163,12 +257,29 @@ wss.on('connection', (ws, req) => {
                     });
                 }
                 else if (data.content.action === 'gameState') {
+                    gameState = data.content.gameState;
+                    if (data.content.settings) {
+                        gameSettings = data.content.settings;
+                    }
+                    if (data.content.gameState !== 'running') {
+                        if (hitPatternTimeout) {
+                            clearTimeout(hitPatternTimeout);
+                            hitPatternTimeout = null;
+                        }
+                    }
+                    if (gameState === 'running' && gameSettings?.pattern === 'hit') {
+                        const next = selectNextDevice();
+                        if (next) {
+                            activateDevice(next.device.id, next.color);
+                        }
+                    }
+
                     broadcastMessage({
                         type: 'command',
                         content: {
                             action: 'gameState',
-                            gameState: data.content.gameState,
-                            settings: data.content.settings
+                            gameState: gameState,
+                            settings: gameSettings
                         },
                         sender: 'System'
                     });
@@ -180,6 +291,9 @@ wss.on('connection', (ws, req) => {
                         updateMasterDeviceList();
                     }
                 }
+            }
+            else if (data.type === 'hit') {
+                handleHit(ws, data);
             }
         } catch (error) {
             console.error(`Error processing message from client #${connectionId}:`, error);
@@ -248,8 +362,6 @@ process.on('SIGINT', () => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-    // Log the server's address info
     const addressInfo = server.address();
     console.log(`Server is running on ${addressInfo.address}:${addressInfo.port}`);
-    closeAllConnections();
 });

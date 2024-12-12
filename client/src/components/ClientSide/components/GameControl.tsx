@@ -1,3 +1,4 @@
+//src/components/ClientSide/components/GameControl.tsx
 import React from 'react';
 import { GameState, GameSettings, Device } from '../../../types';
 
@@ -58,7 +59,7 @@ export const GameControls: React.FC<GameControlsProps> = ({
                             value={gameSettings.pattern}
                             onChange={(e) => setGameSettings({
                                 ...gameSettings,
-                                pattern: e.target.value as 'random' | 'sequential' | 'simultaneous'
+                                pattern: e.target.value as 'random' | 'sequential' | 'simultaneous' | 'hit'
                             })}
                             className="w-full p-2 border rounded mt-1"
                             disabled={gameState === 'running'}
@@ -66,6 +67,7 @@ export const GameControls: React.FC<GameControlsProps> = ({
                             <option value="random">Random</option>
                             <option value="sequential">Sequential</option>
                             <option value="simultaneous">Simultaneous</option>
+                            <option value="hit">Hit-Based</option>
                         </select>
                     </label>
                 </div>

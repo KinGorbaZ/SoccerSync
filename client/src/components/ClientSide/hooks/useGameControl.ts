@@ -1,17 +1,9 @@
-import { useRef, useCallback, useEffect } from 'react';
-import { 
-    DeviceRole, 
-    Device, 
-    Message, 
-    GameState, 
-    GameSettings,
-    GameStateCommand
-} from '../../../types';
-import { getRandomColor } from '../util/helpers';
+import { useCallback, useRef, useEffect } from 'react';
+import { GameState, GameSettings, Device } from '../../../types';
 
 interface UseGameControlProps {
-    wsRef: React.RefObject<WebSocket | null>;
-    deviceRole: DeviceRole;
+    wsRef: React.RefObject<WebSocket>;
+    deviceRole: 'master' | 'client' | undefined;
     username: string;
     gameState: GameState;
     setGameState: (state: GameState) => void;
@@ -28,142 +20,105 @@ export const useGameControl = ({
     setGameState,
     gameSettings,
     handleSetColor,
-    connectedDevices,
+    connectedDevices
 }: UseGameControlProps) => {
-    const gameIntervalRef = useRef<NodeJS.Timeout | null>(null);
-    const lastIndexRef = useRef<number>(-1);
+    const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
 
-    const selectNextDevice = useCallback((clientDevices: Device[]) => {
-        if (gameSettings.pattern === 'random') {
-            return Math.floor(Math.random() * clientDevices.length);
-        }
-        return (lastIndexRef.current + 1) % clientDevices.length;
-    }, [gameSettings.pattern]);
-
-    const activateNextDevice = useCallback(() => {
-        const clientDevices = connectedDevices.filter(d => d.role === 'client');
-        if (clientDevices.length === 0) {
-            console.log('No client devices available');
-            return;
-        }
-    
-        if (gameSettings.pattern === 'simultaneous') {
-            // For simultaneous mode, all devices get the same new color
-            const colorIndex = (lastIndexRef.current + 1) % gameSettings.colors.length;
-            lastIndexRef.current = colorIndex;
-            const color = gameSettings.colors[colorIndex];
-            
-            console.log(`Activating ALL devices with color ${color}`);
-            // No need to set black first in simultaneous mode
-            clientDevices.forEach(device => {
-                handleSetColor(device.id, color);
-            });
-        } else {
-            // Sequential or Random mode - activate single device
-            // First, set all screens to black
-            handleSetColor(undefined, undefined);
-    
-            const nextIndex = selectNextDevice(clientDevices);
-            lastIndexRef.current = nextIndex;
-            const targetDevice = clientDevices[nextIndex];
-            const colorIndex = Math.floor(Math.random() * gameSettings.colors.length);
-            const color = gameSettings.colors[colorIndex];
-            
-            console.log(`Activating device ${targetDevice.id} with color ${color}`);
-            handleSetColor(targetDevice.id, color);
-        }
-    }, [connectedDevices, handleSetColor, selectNextDevice, gameSettings]);
-    
-    // Cleanup function to clear interval
-    const cleanupInterval = useCallback(() => {
-        if (gameIntervalRef.current) {
-            console.log('Clearing game interval');
-            clearInterval(gameIntervalRef.current);
-            gameIntervalRef.current = null;
+    const clearGameLoop = useCallback(() => {
+        if (gameLoopRef.current) {
+            clearInterval(gameLoopRef.current);
+            gameLoopRef.current = null;
         }
     }, []);
 
-    // Effect to handle interval based on game state
-    useEffect(() => {
-        if (gameState === 'running' && deviceRole === 'master') {
-            console.log('Setting up game interval');
+    const startGameLoop = useCallback(() => {
+        // Only start interval for non-hit patterns
+        if (gameSettings.pattern !== 'hit') {
+            clearGameLoop();
             
-            // Clear any existing interval
-            cleanupInterval();
-            
-            // Set up new interval
-            gameIntervalRef.current = setInterval(() => {
-                console.log('Interval tick - activating next device');
-                activateNextDevice();
-            }, gameSettings.intervalSpeed);
+            if (gameSettings.pattern === 'simultaneous') {
+                // Handle simultaneous pattern
+                const clientDevices = connectedDevices.filter(d => d.role === 'client');
+                clientDevices.forEach(device => {
+                    const randomColor = gameSettings.colors[Math.floor(Math.random() * gameSettings.colors.length)];
+                    handleSetColor(device.id, randomColor);
+                });
+            } else {
+                // Handle random and sequential patterns
+                gameLoopRef.current = setInterval(() => {
+                    const clientDevices = connectedDevices.filter(d => d.role === 'client');
+                    if (clientDevices.length === 0) return;
 
-            // Initial activation
-            activateNextDevice();
-        } else {
-            cleanupInterval();
+                    let nextDevice;
+                    if (gameSettings.pattern === 'random') {
+                        nextDevice = clientDevices[Math.floor(Math.random() * clientDevices.length)];
+                    } else {
+                        // Sequential pattern
+                        const currentIndex = clientDevices.findIndex(d => d.currentColor !== 'black');
+                        nextDevice = clientDevices[(currentIndex + 1) % clientDevices.length];
+                    }
+
+                    const randomColor = gameSettings.colors[Math.floor(Math.random() * gameSettings.colors.length)];
+                    
+                    // Turn all devices black first
+                    handleSetColor(undefined, 'black');
+                    // Then activate the selected device
+                    handleSetColor(nextDevice.id, randomColor);
+                }, gameSettings.intervalSpeed);
+            }
         }
-
-        // Cleanup on unmount or when dependencies change
-        return cleanupInterval;
-    }, [gameState, deviceRole, gameSettings.intervalSpeed, activateNextDevice, cleanupInterval]);
+    }, [gameSettings, connectedDevices, handleSetColor, clearGameLoop]);
 
     const handleStartGame = useCallback(() => {
-        if (wsRef.current && deviceRole === 'master') {
-            console.log('Starting game...');
-            
-            const command: GameStateCommand = {
-                action: 'gameState',
-                gameState: 'running',
-                settings: gameSettings,
-                timestamp: Date.now()
-            };
-            
-            const message: Message = {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            const message = {
                 type: 'command',
-                content: command,
-                sender: username,
-                timestamp: Date.now()
+                content: {
+                    action: 'gameState',
+                    gameState: 'running',
+                    settings: gameSettings,
+                    timestamp: Date.now()
+                },
+                sender: username
             };
-            
             wsRef.current.send(JSON.stringify(message));
-            setGameState('running');
         }
-    }, [deviceRole, gameSettings, setGameState, username, wsRef]);
+    }, [wsRef, gameSettings, username]);
 
     const handlePauseGame = useCallback(() => {
-        if (wsRef.current && deviceRole === 'master') {
-            console.log('Pausing game...');
-            
-            const command: GameStateCommand = {
-                action: 'gameState',
-                gameState: 'paused',
-                timestamp: Date.now()
-            };
-            
-            const message: Message = {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            const message = {
                 type: 'command',
-                content: command,
-                sender: username,
-                timestamp: Date.now()
+                content: {
+                    action: 'gameState',
+                    gameState: 'paused',
+                    timestamp: Date.now()
+                },
+                sender: username
             };
-            
             wsRef.current.send(JSON.stringify(message));
-            setGameState('paused');
-            
-            handleSetColor(undefined, undefined);
-            lastIndexRef.current = -1;
         }
-    }, [deviceRole, handleSetColor, setGameState, username, wsRef]);
+    }, [wsRef, username]);
 
-    // Cleanup on unmount
     useEffect(() => {
-        return cleanupInterval;
-    }, [cleanupInterval]);
+        if (gameState === 'running') {
+            startGameLoop();
+        } else {
+            clearGameLoop();
+            if (gameState === 'idle') {
+                handleSetColor(undefined, 'black');
+            }
+        }
+    }, [gameState, startGameLoop, clearGameLoop, handleSetColor]);
+
+    useEffect(() => {
+        return () => {
+            clearGameLoop();
+        };
+    }, [clearGameLoop]);
 
     return {
         handleStartGame,
         handlePauseGame
     };
 };
-
-export default useGameControl;
