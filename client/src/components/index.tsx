@@ -9,7 +9,7 @@ import { ConnectionForm } from './ClientSide/components/ConnectionForm';
 import { GameControls } from './ClientSide/components/GameControl';
 import { ColorControls } from './ClientSide/components/ColorControl';
 import { ClientScreen } from './ClientSide/components/ClientScreen';
-
+import logo from '../assets/TOPSA_Teansperent.png';
 const ClientSide = () => {
     const [username, setUsername] = useState('');
     const [deviceRole, setDeviceRole] = useState<DeviceRole>();
@@ -71,15 +71,21 @@ const ClientSide = () => {
 
     if (!hasJoined) {
         return (
-            <ConnectionForm 
-                connectionStatus={connectionStatus}
-                onJoin={handleJoin}
-            />
+            <>
+                <img src={logo} />
+                <ConnectionForm 
+                    connectionStatus={connectionStatus}
+                    onJoin={handleJoin}
+                />
+            </>
         );
     }
-
+    
     return (
         <div className="max-w-md mx-auto p-4">
+            <img src={logo} 
+                {...(deviceRole=== 'master'?{className:'logo-master block mx-auto'}:{})}
+            />
             {deviceRole === 'client' && (
                 <ClientScreen 
                     deviceId={deviceId}
