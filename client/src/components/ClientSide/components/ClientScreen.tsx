@@ -1,18 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { useVibrationDetection } from '../hooks/useVibrationDetection';
+import { MaxBrightness } from './MaxBrightness';
 
 interface ClientScreenProps {
     deviceId: string;
     screenColor: string | null;
     onHit?: (deviceId: string) => void;
     gamePattern?: string;
+    enableBrightness?: boolean;
 }
 
 export const ClientScreen: React.FC<ClientScreenProps> = ({
     deviceId,
     screenColor,
     onHit,
-    gamePattern
+    gamePattern,
+    enableBrightness = true,
 }) => {
     const [motionEnabled, setMotionEnabled] = useState(false);
 
@@ -39,9 +42,7 @@ export const ClientScreen: React.FC<ClientScreenProps> = ({
 
         enableMotion();
     }, [gamePattern, requestMotionPermission]);
-
-    return (
-        <div 
+    let content = <div 
             className="fixed inset-0 flex items-center justify-center"
             style={{ 
                 backgroundColor: screenColor || 'black',
@@ -66,5 +67,9 @@ export const ClientScreen: React.FC<ClientScreenProps> = ({
                 )}
             </div>
         </div>
-    );
+
+    if(enableBrightness){
+        content = <MaxBrightness>{content}</MaxBrightness>;
+    }
+    return (<>{content}</>);
 };
