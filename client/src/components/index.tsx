@@ -1,6 +1,6 @@
 // src/components/index.tsx
-import React, { useState } from 'react';
-import { DeviceRole, GameState, GameSettings, ConnectionStatus } from '../types';
+import React, { useCallback, useState } from 'react';
+import { DeviceRole, GameState, GameSettings } from '../types';
 // Fix these import paths
 import { useWebSocket } from './ClientSide/hooks/useWebSocket';
 import { useGameControl } from './ClientSide/hooks/useGameControl';
@@ -9,7 +9,7 @@ import { ConnectionForm } from './ClientSide/components/ConnectionForm';
 import { GameControls } from './ClientSide/components/GameControl';
 import { ColorControls } from './ClientSide/components/ColorControl';
 import { ClientScreen } from './ClientSide/components/ClientScreen';
-
+import logo from '../assets/TOPSA_Teansperent.png';
 const ClientSide = () => {
     const [username, setUsername] = useState('');
     const [deviceRole, setDeviceRole] = useState<DeviceRole>();
@@ -37,8 +37,23 @@ const ClientSide = () => {
         setDeviceRole,
         setDeviceId,
         setScreenColor,
-        setGameState  // Make sure this is passed
+        setGameState,
+        setGameSettings  // Add this
     });
+
+    const handleHit = useCallback((deviceId: string) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+                type: 'hit',
+                content: {
+                    action: 'hit',
+                    deviceId,
+                    timestamp: Date.now()
+                },
+                sender: username
+            }));
+        }
+    }, [wsRef, username]);
 
     const {
         handleStartGame,
@@ -56,19 +71,27 @@ const ClientSide = () => {
 
     if (!hasJoined) {
         return (
-            <ConnectionForm 
-                connectionStatus={connectionStatus}
-                onJoin={handleJoin}
-            />
+            <>
+                <img src={logo} />
+                <ConnectionForm 
+                    connectionStatus={connectionStatus}
+                    onJoin={handleJoin}
+                />
+            </>
         );
     }
-
+    
     return (
         <div className="max-w-md mx-auto p-4">
+            <img src={logo} 
+                {...(deviceRole=== 'master'?{className:'logo-master block mx-auto'}:{})}
+            />
             {deviceRole === 'client' && (
                 <ClientScreen 
                     deviceId={deviceId}
                     screenColor={screenColor}
+                    onHit={handleHit}
+                    gamePattern={gameSettings.pattern}  // Pass the pattern here
                 />
             )}
             

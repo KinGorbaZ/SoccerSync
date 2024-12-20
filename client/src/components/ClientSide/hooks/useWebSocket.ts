@@ -4,7 +4,8 @@ import {
     Device, 
     Message, 
     ConnectionStatus, 
-    GameState
+    GameState,
+    GameSettings
 } from '../../../types';
 import { generateUsername } from '../util/helpers';
 
@@ -15,7 +16,8 @@ interface UseWebSocketProps {
     setDeviceRole: (role: DeviceRole) => void;
     setDeviceId: (id: string) => void;
     setScreenColor: (color: string | null) => void;
-    setGameState: (state: GameState) => void;  // Make sure this is included
+    setGameState: (state: GameState) => void;
+    setGameSettings: (settings: GameSettings) => void;  // Add this line
 }
 
 export const useWebSocket = ({
@@ -25,7 +27,8 @@ export const useWebSocket = ({
     setDeviceRole,
     setDeviceId,
     setScreenColor,
-    setGameState
+    setGameState,
+    setGameSettings  // Add this parameter
 }: UseWebSocketProps) => {
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
     const [hasJoined, setHasJoined] = useState(false);
@@ -51,7 +54,7 @@ export const useWebSocket = ({
         cleanup();
         setConnectionStatus(ConnectionStatus.CONNECTING);
 
-        const ws = new WebSocket('ws://192.168.50.188:3000');
+        const ws = new WebSocket('wss://192.168.50.188:3000');
         wsRef.current = ws;
 
         return new Promise<void>((resolve, reject) => {
@@ -119,6 +122,13 @@ export const useWebSocket = ({
                         case 'gameState':
                             if ('gameState' in data.content) {
                                 setGameState(data.content.gameState);
+                                // Handle game settings when received
+                                if ('settings' in data.content && data.content.settings) {
+                                    setGameSettings(data.content.settings);  // Make sure this prop is passed
+                                }
+                                if (data.content.gameState === 'idle' || data.content.gameState === 'paused') {
+                                    setScreenColor('black');
+                                }
                             }
                             break;
                     }
@@ -166,6 +176,22 @@ export const useWebSocket = ({
         }
     }, [username]);
 
+    const handleHit = useCallback((deviceId: string) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            const message: Message = {
+                type: 'hit',
+                content: {
+                    action: 'hit',
+                    deviceId: deviceId,
+                    timestamp: Date.now()
+                },
+                sender: username,
+                timestamp: Date.now()
+            };
+            wsRef.current.send(JSON.stringify(message));
+        }
+    }, [username]);
+
     const handleRenameDevice = useCallback((deviceId: string, newName: string) => {
         if (wsRef.current?.readyState === WebSocket.OPEN && newName.trim()) {
             const message: Message = {
@@ -195,6 +221,7 @@ export const useWebSocket = ({
         handleJoin,
         handleSetColor,
         handleRenameDevice,
+        handleHit,
         wsRef
     };
 };
