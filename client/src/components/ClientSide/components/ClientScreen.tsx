@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useVibrationDetection } from '../hooks/useVibrationDetection';
 import { MaxBrightness } from './MaxBrightness';
+import { FullScreen } from './FullScreen';
 
 interface ClientScreenProps {
     deviceId: string;
@@ -8,6 +9,7 @@ interface ClientScreenProps {
     onHit?: (deviceId: string) => void;
     gamePattern?: string;
     enableBrightness?: boolean;
+    enableFullscreen?: boolean;
 }
 
 export const ClientScreen: React.FC<ClientScreenProps> = ({
@@ -16,6 +18,7 @@ export const ClientScreen: React.FC<ClientScreenProps> = ({
     onHit,
     gamePattern,
     enableBrightness = true,
+    enableFullscreen = true,
 }) => {
     const [motionEnabled, setMotionEnabled] = useState(false);
 
@@ -70,6 +73,10 @@ export const ClientScreen: React.FC<ClientScreenProps> = ({
 
     if(enableBrightness){
         content = <MaxBrightness>{content}</MaxBrightness>;
+    }
+
+    if(enableFullscreen){
+        content = <FullScreen>{content}</FullScreen>;
     }
     return (<>{content}</>);
 };
